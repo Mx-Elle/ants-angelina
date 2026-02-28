@@ -50,30 +50,23 @@ class DyingBot:
     FOOD = 5
         """
     
-    def scout_land(self, vision: set[tuple[tuple[int, int], Entity]], ) -> set:
-        #dijkstra map of 
-        ...
-    
-    def attack_land(self, vision: set[tuple[tuple[int, int], Entity]], ) -> set:
-        #dijkstra map of 
+    def score_land(self, vision: set[tuple[tuple[int, int], Entity]], type: str) -> set:
+        #dijkstra map of values. If you're a scout, prioritize exploration (and food)
+        #attacker prioritizes enemy ants and hills
+        #guard prioritizes locations near the hill and food
         ...
 
-    def guard_land(self, vision: set[tuple[tuple[int, int], Entity]], ) -> set:
-        #dijkstra map of 
-        ...
+
 
     def choose_role(
-            self, vision: set[tuple[tuple[int, int], Entity]], 
-            radius: int, ant_capacity: int, food_capacity: int, stored_food: int
+            self, my_ants, my_hills, 
+            radius: int, ant_capacity: int, food_capacity: int, food: int
             ) -> defaultdict: 
         """returns some role as an int:
         Ant Scout = 1
         Ant Guard = 2
         Ant Attack = 3
         """
-
-        my_hills = {coord for coord, kind in vision if kind == Entity.FRIENDLY_HILL}
-        my_ants = {coord for coord, kind in vision if kind == Entity.FRIENDLY_ANT}
 
         closed_list = set()
         frontier = []
@@ -112,7 +105,7 @@ class DyingBot:
             if near_colony[ant]:
                 ant_type[ant] = 2
             else:
-                if len(my_ants) > ant_capacity and stored_food > food_capacity:
+                if len(my_ants) > ant_capacity and food > food_capacity:
                     ant_type[ant] = 3
                 else:
                     ant_type[ant] = 1
@@ -130,7 +123,11 @@ class DyingBot:
         my_ants = {coord for coord, kind in vision if kind == Entity.FRIENDLY_ANT}
         my_hills = {coord for coord, kind in vision if kind == Entity.FRIENDLY_HILL}
         claimed_destinations = my_hills
+
+        ant_type_dict = self.choose_role(my_ants, my_hills, radius = 8, ant_capacity = 200, food_capacity = 5, food = stored_food)
+        
         for ant in my_ants:
+            ant_type = ant_type_dict[ant]
             valid = [
                 v
                 for v in valid_neighbors(*ant, self.walls)
@@ -140,8 +137,30 @@ class DyingBot:
                 claimed_destinations.add(ant)
                 continue
 
-            dest = choice(valid)
-            #this is where the choice is randomized, by the way
+            if ant_type == 1:
+                if self.scout_map == None:
+                    #pick a new target
+                    ...
+                #do scout things
+                dest = choice(valid)
+                ...
+            elif ant_type == 2:
+                if self.guard_map == None:
+                    #pick a new target
+                    ...
+                #do guard things
+                dest = choice(valid)
+                ...
+            elif ant_type == 3:
+                if self.guard_map == None:
+                    #pick a new target
+                    ...
+                #do attack things
+                dest = choice(valid)
+                # dest = min(self.attack_map[valid])
+                ...
+            else:
+                dest = choice(valid)
 
             claimed_destinations.add(dest)
             out.add((ant, dest))
