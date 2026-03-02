@@ -14,6 +14,7 @@ from board import Board, Entity, generate_board, toroidal_distance_2
 from dataclasses import dataclass
 
 from random_player import RandomBot
+from a_dying_ant_player import DyingBot
 
 AntMove = tuple[tuple[int, int], tuple[int, int]]
 
@@ -299,7 +300,7 @@ def harvest(board: Board, collect_radius: int, food: dict[int, int]) -> None:
 def main():
     b = generate_board(80, 80, hills_per_player=3)
     spec = GameSpecification(b)
-    play_game(spec, RandomBot, RandomBot)
+    play_game(spec, RandomBot, DyingBot)
 
 
 if __name__ == "__main__":

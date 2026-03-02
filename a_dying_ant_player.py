@@ -50,11 +50,71 @@ class DyingBot:
     FOOD = 5
         """
     
-    def score_land(self, vision: set[tuple[tuple[int, int], Entity]], type: str) -> set:
+    def score_land(self, vision: set[tuple[tuple[int, int], Entity]], type: str) -> dict:
         #dijkstra map of values. If you're a scout, prioritize exploration (and food)
         #attacker prioritizes enemy ants and hills
         #guard prioritizes locations near the hill and food
-        ...
+        closed_list = set()
+        frontier = []
+
+        all_cells = {point for point, entity in vision}
+
+        my_hills = {coord for coord, kind in vision if kind == Entity.FRIENDLY_HILL}
+        their_ants = {coord for coord, kind in vision if kind == Entity.ENEMY_ANT}
+        their_hills = {coord for coord, kind in vision if kind == Entity.ENEMY_HILL}
+        seen_food = {coord for coord, kind in vision if kind == Entity.FOOD}
+
+        dijkstra = defaultdict(lambda: float(0))
+        # full_map = set()
+
+        if type == 'scout':
+            for hill in my_hills:
+                dijkstra[hill] = 5
+                heapq.heappush(frontier, (dijkstra[hill], hill))
+            for food in seen_food:      
+                dijkstra[food] = -5
+                heapq.heappush(frontier, (dijkstra[food], food))
+        if type == 'guard':
+            for hill in my_hills:
+                dijkstra[hill] = -8
+                heapq.heappush(frontier, (dijkstra[hill], hill))
+        if type == 'attack':
+            for hill in my_hills:
+                dijkstra[hill] = 5
+                heapq.heappush(frontier, (dijkstra[hill], hill))
+            for enemy in their_ants:      
+                dijkstra[enemy] = -5
+                heapq.heappush(frontier, (dijkstra[enemy], enemy))
+            for e_hill in their_hills:      
+                dijkstra[e_hill] = -15
+                heapq.heappush(frontier, (dijkstra[e_hill], e_hill))
+
+        while frontier:
+            stink, current_cell = heapq.heappop(frontier)
+            if current_cell in closed_list:
+                continue
+            if all_cells.issubset(closed_list):
+                break
+
+            for neighbor in valid_neighbors(*current_cell, self.walls):
+                best_mag = 0
+                for score_neighbor in valid_neighbors(*neighbor, self.walls):
+                    neighbor_stink = dijkstra[score_neighbor]
+                    if abs(best_mag) < abs(neighbor_stink):
+                        best_mag = neighbor_stink
+                if best_mag > 0:
+                    dijkstra[neighbor] = best_mag - 1
+                if best_mag < 0:
+                    dijkstra[neighbor] = best_mag + 1
+                # full_map.add((neighbor, dijkstra[neighbor]))
+                if neighbor not in closed_list:
+                    heapq.heappush(
+                        frontier, (dijkstra[neighbor], neighbor)
+                    )        
+            closed_list.add(current_cell)
+            
+
+        return dijkstra
 
 
 
@@ -124,7 +184,12 @@ class DyingBot:
         my_hills = {coord for coord, kind in vision if kind == Entity.FRIENDLY_HILL}
         claimed_destinations = my_hills
 
-        ant_type_dict = self.choose_role(my_ants, my_hills, radius = 8, ant_capacity = 200, food_capacity = 5, food = stored_food)
+        ant_type_dict = self.choose_role(my_ants, my_hills, radius = 5, ant_capacity = 200, food_capacity = 5, food = stored_food)
+        #if there's too many guards, chnge it tio a scout
+
+        self.scout_map = self.score_land(vision, 'scout')
+        self.guard_map = self.score_land(vision, 'guard')
+        self.attack_map = self.score_land(vision, 'attack')
         
         for ant in my_ants:
             ant_type = ant_type_dict[ant]
@@ -137,33 +202,28 @@ class DyingBot:
                 claimed_destinations.add(ant)
                 continue
 
+            target_val = float('-inf')
+            target = None
             if ant_type == 1:
-                if self.scout_map == None:
-                    #pick a new target
-                    ...
-                #do scout things
-                dest = choice(valid)
-                ...
+                for option in valid:
+                    if target_val < self.scout_map[option]:
+                        target_val = self.scout_map[option]
+                        target = option
             elif ant_type == 2:
-                if self.guard_map == None:
-                    #pick a new target
-                    ...
-                #do guard things
-                dest = choice(valid)
-                ...
+                for option in valid:
+                    if target_val < self.guard_map[option]:
+                        target_val = self.guard_map[option]
+                        target = option
             elif ant_type == 3:
-                if self.guard_map == None:
-                    #pick a new target
-                    ...
-                #do attack things
-                dest = choice(valid)
-                # dest = min(self.attack_map[valid])
-                ...
+                for option in valid:
+                    if target_val < self.attack_map[option]:
+                        target_val = self.attack_map[option]
+                        target = option
             else:
-                dest = choice(valid)
+                target = choice(valid)
 
-            claimed_destinations.add(dest)
-            out.add((ant, dest))
+            claimed_destinations.add(target)
+            out.add((ant, target))
         return out
     
 
