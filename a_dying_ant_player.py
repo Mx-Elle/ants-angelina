@@ -50,11 +50,19 @@ class DyingBot:
     FOOD = 5
         """
     
+    def unseen_tiles(self, vision: set[tuple[tuple[int, int], Entity]]):
+        all_cells = {(r, c) for r in range(self.walls.shape[0]) for c in range(self.walls.shape[1]) if not self.walls[r, c]}
+        seen_cells = {point for point, entity in vision}
+        unseen_cells = all_cells - seen_cells
+        return unseen_cells
+    
+
     def score_land(self, vision: set[tuple[tuple[int, int], Entity]], type: str) -> tuple[dict, dict]:
         #dijkstra map of values. If you're a scout, prioritize exploration (and food)
         #attacker prioritizes enemy ants and hills
         #guard prioritizes locations near the hill and food
 
+        my_ants = {coord for coord, kind in vision if kind == Entity.FRIENDLY_ANT}
         my_hills = {coord for coord, kind in vision if kind == Entity.FRIENDLY_HILL}
         their_ants = {coord for coord, kind in vision if kind == Entity.ENEMY_ANT}
         their_hills = {coord for coord, kind in vision if kind == Entity.ENEMY_HILL}
@@ -64,14 +72,21 @@ class DyingBot:
         detract_dijkstra = defaultdict(lambda: float('inf'))
 
         if type == 'scout':
+            for food in seen_food:
+                attract_dijkstra[food] = -5            
+            for tile in self.unseen_tiles(vision):
+                attract_dijkstra[tile] = -1
+
+            for ant in my_ants:
+                detract_dijkstra[ant] = -1
             for hill in my_hills:
                 detract_dijkstra[hill] = -7 #note this will become positive
-            for food in seen_food:
-                attract_dijkstra[food] = -5
 
         if type == 'guard':
             for hill in my_hills:
                 attract_dijkstra[hill] = -4
+            # for tile in self.unseen_tiles(vision):
+            #     detract_dijkstra[tile] = -2
 
         if type == 'attack':
             for hill in my_hills:
@@ -80,39 +95,43 @@ class DyingBot:
                 attract_dijkstra[enemy] = -5
             for e_hill in their_hills:      
                 attract_dijkstra[e_hill] = -15
+            for tile in self.unseen_tiles(vision):
+                attract_dijkstra[tile] = 0
     
         return(attract_dijkstra, detract_dijkstra)
-
-
-
-    def run_dijkstra(self, vision: set[tuple[tuple[int, int], Entity]], type: str):
+    
+    
+    def run_single_dijkstra(self, base_dict, all_cells):
+        frontier = []
+        smelly = defaultdict(lambda: float('inf'), base_dict)
         
-        all_cells = {point for point, entity in vision}
+        for cell, value in base_dict.items():
+            if value != float('inf'):
+                heapq.heappush(frontier, (value, cell))
+
+        while frontier:
+            value, cell = heapq.heappop(frontier)
+            if value > smelly[cell]:
+                continue
+            for neighbor in valid_neighbors(*cell, self.walls):
+                if neighbor not in all_cells:
+                    continue
+                new_value = value + 1
+                if new_value < smelly[neighbor]:
+                    smelly[neighbor] = new_value
+                    heapq.heappush(frontier, (smelly[neighbor], neighbor))
+
+        return smelly
+
+    def combine_dijkstra(self, vision: set[tuple[tuple[int, int], Entity]], type: str):
+        # all_cells = {point for point, entity in vision}
+        all_cells = {(r, c) for r in range(self.walls.shape[0]) for c in range(self.walls.shape[1]) if not self.walls[r, c]}
         attract_dijkstra, detract_dijkstra = self.score_land(vision, type)
 
-        #attract
-        changed = True
-        while changed:
-            changed = False
-            for cell in all_cells:
-                min_neighbor = min(attract_dijkstra[neighbor] for neighbor in valid_neighbors(*cell, self.walls))
-                if min_neighbor + 1 < attract_dijkstra[cell]:
-                    attract_dijkstra[cell] = min_neighbor + 1
-                    changed = True 
-        #detract
-        changed = True
-        while changed:
-            changed = False
-            for cell in all_cells:
-                min_neighbor = min(detract_dijkstra[neighbor] for neighbor in valid_neighbors(*cell, self.walls))
-                if min_neighbor + 1 < detract_dijkstra[cell]:
-                    detract_dijkstra[cell] = min_neighbor + 1
-                    changed = True
+        attract_dijkstra = self.run_single_dijkstra(attract_dijkstra, all_cells)
+        detract_dijkstra = self.run_single_dijkstra(detract_dijkstra, all_cells)
         for cell in all_cells:
             detract_dijkstra[cell] = -1.2 * detract_dijkstra[cell]
-            min_neighbor = min(detract_dijkstra[neighbor] for neighbor in valid_neighbors(*cell, self.walls))
-            if min_neighbor + 1 < detract_dijkstra[cell]:
-                detract_dijkstra[cell] = min_neighbor + 1
 
         dijkstra = defaultdict(lambda: float('inf'))
         for cell in all_cells:
@@ -120,15 +139,13 @@ class DyingBot:
 
         return dijkstra
 
-
-
     def choose_role(
             self, my_ants, my_hills, 
             radius: int, ant_capacity: int, food_capacity: int, food: int
             ) -> defaultdict: 
-        maximum_guards = 30
+        maximum_guards = 50
         guards = 0
-        maximum_attackers = 40
+        maximum_attackers = 50
         attackers = 0
         """returns some role as an int:
         Ant Scout = 1
@@ -180,6 +197,12 @@ class DyingBot:
                 else:
                     ant_type[ant] = 1
 
+        print(f'guards: {guards}')
+        print(f'scouts: {len(my_ants) - guards - attackers}')
+        print(f'attackers: {attackers}')
+        if attackers == 0:
+            print("no attackers because:")
+            print(f'food: {food}')
         return ant_type
     #"choose ant function," basically meaning if the ant is farther away, it's a scout
     #closer, and it's a guard, and if you have more than a certain amount of ants+hills+food all your scouts become attackers
@@ -194,12 +217,12 @@ class DyingBot:
         my_hills = {coord for coord, kind in vision if kind == Entity.FRIENDLY_HILL}
         claimed_destinations = my_hills
 
-        ant_type_dict = self.choose_role(my_ants, my_hills, radius = 5, ant_capacity = 200, food_capacity = 5, food = stored_food)
+        ant_type_dict = self.choose_role(my_ants, my_hills, radius = 5, ant_capacity = 120, food_capacity = 3, food = stored_food)
         #if there's too many guards, chnge it tio a scout
 
-        self.scout_map = self.run_dijkstra(vision, 'scout')
-        self.guard_map = self.run_dijkstra(vision, 'guard')
-        self.attack_map = self.run_dijkstra(vision, 'attack')
+        self.scout_map = self.combine_dijkstra(vision, 'scout')
+        self.guard_map = self.combine_dijkstra(vision, 'guard')
+        self.attack_map = self.combine_dijkstra(vision, 'attack')
         
         for ant in my_ants:
             ant_type = ant_type_dict[ant]
@@ -212,26 +235,22 @@ class DyingBot:
                 claimed_destinations.add(ant)
                 continue
 
-            target_val = float('inf')
             target = None
             if ant_type == 1:
-                target = min(self.scout_map[option] for option in valid)
-                # for option in valid:
-                #     if target_val > self.scout_map[option]:
-                #         target_val = self.scout_map[option]
-                #         target = option
+                # target = min(valid, key=lambda option: self.scout_map[option])
+                best_value = min(self.scout_map[option] for option in valid)
+                best_cells = [option for option in valid if self.scout_map[option] == best_value]
+                target = choice(best_cells)
             elif ant_type == 2:
-                # target = min(self.guard_map[option] for option in valid)
-                for option in valid:
-                    if target_val > self.guard_map[option]:
-                        target_val = self.guard_map[option]
-                        target = option
+                # target = min(valid, key=lambda option: self.guard_map[option])
+                best_value = min(self.guard_map[option] for option in valid)
+                best_cells = [option for option in valid if self.guard_map[option] == best_value]
+                target = choice(best_cells)
             elif ant_type == 3:
-                # target = min(self.attack_map[option] for option in valid)
-                for option in valid:
-                    if target_val > self.attack_map[option]:
-                        target_val = self.attack_map[option]
-                        target = option
+                # target = min(valid, key=lambda option: self.attack_map[option])
+                best_value = min(self.attack_map[option] for option in valid)
+                best_cells = [option for option in valid if self.attack_map[option] == best_value]
+                target = choice(best_cells)
             else:
                 target = choice(valid)
 

@@ -44,3 +44,86 @@
 #             for e_hill in their_hills:      
 #                 attract_dijkstra[e_hill] = -15
 #                 heapq.heappush(frontier, (attract_dijkstra[e_hill], e_hill))
+
+                # target = min(self.attack_map[option] for option in valid)
+                # for option in valid:
+                #     if target_val < self.attack_map[option]:
+                #         target_val = self.attack_map[option]
+                #         target = option
+
+
+ def run_single_dijkstra(self, base_dict, all_cells):
+        frontier = []
+        smelly = base_dict.copy()
+        
+        for cell, value in base_dict.items():
+            if value != float('inf'):
+                heapq.heappush(frontier, (value, cell))
+
+        while frontier:
+            value, cell = heapq.heappop(frontier)
+            if value > smelly[cell]:
+                continue
+            for neighbor in valid_neighbors(*cell, self.walls):
+                if neighbor not in all_cells:
+                    continue
+                new_value = value + 1
+                if new_value < smelly[neighbor]:
+                    smelly[neighbor] = new_value
+                    heapq.heappush(frontier, (smelly[neighbor], neighbor))
+
+        return smelly
+
+    def combine_dijkstra(self, vision: set[tuple[tuple[int, int], Entity]], type: str):
+        all_cells = {point for point, entity in vision}
+        attract_dijkstra, detract_dijkstra = self.score_land(vision, type)
+
+        attract_dijkstra = self.run_single_dijkstra(attract_dijkstra, all_cells)
+        detract_dijkstra = self.run_single_dijkstra(detract_dijkstra, all_cells)
+        for cell in all_cells:
+            detract_dijkstra[cell] = -1.2 * detract_dijkstra[cell]
+
+        dijkstra = defaultdict(lambda: float('inf'))
+        for cell in all_cells:
+            dijkstra[cell] = attract_dijkstra[cell] + detract_dijkstra[cell]
+
+        return dijkstra
+
+    def run_dijkstra(self, vision: set[tuple[tuple[int, int], Entity]], type: str):
+        
+        all_cells = {point for point, entity in vision}
+        attract_dijkstra, detract_dijkstra = self.score_land(vision, type)
+
+        #attract
+        changed = True
+        while changed:
+            changed = False
+            for cell in all_cells:
+                min_neighbor = min(attract_dijkstra[neighbor] for neighbor in valid_neighbors(*cell, self.walls))
+                if min_neighbor + 1 < attract_dijkstra[cell]:
+                    attract_dijkstra[cell] = min_neighbor + 1
+                    changed = True 
+        #detract
+        changed = True
+        while changed:
+            changed = False
+            for cell in all_cells:
+                min_neighbor = min(detract_dijkstra[neighbor] for neighbor in valid_neighbors(*cell, self.walls))
+                if min_neighbor + 1 < detract_dijkstra[cell]:
+                    detract_dijkstra[cell] = min_neighbor + 1
+                    changed = True
+        for cell in all_cells:
+            detract_dijkstra[cell] = -1.2 * detract_dijkstra[cell]
+            min_neighbor = min(detract_dijkstra[neighbor] for neighbor in valid_neighbors(*cell, self.walls))
+            if min_neighbor + 1 < detract_dijkstra[cell]:
+                detract_dijkstra[cell] = min_neighbor + 1
+    
+        dijkstra = defaultdict(lambda: float('inf'))
+        for cell in all_cells:
+            dijkstra[cell] = attract_dijkstra[cell] + detract_dijkstra[cell]
+
+        return dijkstra
+
+        # self.scout_map = self.run_dijkstra(vision, 'scout')
+        # self.guard_map = self.run_dijkstra(vision, 'guard')
+        # self.attack_map = self.run_dijkstra(vision, 'attack')
