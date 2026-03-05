@@ -107,7 +107,7 @@ def play_game(
                 print(f"Blue {p2.name} wins due to opponent timing out.")
             if "p2" in str(e):
                 print(f"Red {p1.name} wins due to opponent timing out.")
-        move_ants(board, p1_moves, p2_moves)
+        move_ants(board, p1_moves, p2_moves) #type: ignore
         combat(board, spec.battle_radius)
         flatten_hills(board)
         harvest(board, spec.harvest_radius, food)

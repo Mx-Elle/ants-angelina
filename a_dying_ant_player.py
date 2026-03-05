@@ -102,7 +102,7 @@ class DyingBot:
     
     
     def run_single_dijkstra(self, base_dict, all_cells):
-        frontier = []
+        frontier: list[tuple[float, tuple[int, int]]] = []
         smelly = defaultdict(lambda: float('inf'), base_dict)
         
         for cell, value in base_dict.items():
@@ -217,7 +217,7 @@ class DyingBot:
         my_hills = {coord for coord, kind in vision if kind == Entity.FRIENDLY_HILL}
         claimed_destinations = my_hills
 
-        ant_type_dict = self.choose_role(my_ants, my_hills, radius = 5, ant_capacity = 120, food_capacity = 2, food = stored_food)
+        ant_type_dict = self.choose_role(my_ants, my_hills, radius = 5, ant_capacity = 210, food_capacity = 0, food = stored_food)
         #if there's too many guards, chnge it tio a scout
 
         self.scout_map = self.combine_dijkstra(vision, 'scout')
